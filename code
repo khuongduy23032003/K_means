@@ -1,0 +1,69 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from mpl_toolkits.mplot3d import Axes3D
+
+# Load and preprocess the data
+df = pd.read_csv('/content/kmeans_dataset.csv', sep=';')
+df = df.iloc[:, :6]  
+mean_vals, std_vals = df.mean(), df.std()
+filtered_data = df[(df >= mean_vals - 3 * std_vals) & (df <= mean_vals + 3 * std_vals)].dropna()
+
+# Apply PCA
+scaler = StandardScaler()
+pca = PCA(n_components=3)
+scaled_pca_data = scaler.fit_transform(pca.fit_transform(filtered_data))
+pca_df = pd.DataFrame(scaled_pca_data, columns=['PC1', 'PC2', 'PC3'])
+
+# K-means clustering functions
+def random_centroids(sample_data, clusters):
+    return sample_data.sample(n=clusters).values
+
+def cluster_assignment(sample_data, centroid_positions):
+    dist_array = np.linalg.norm(sample_data.values[:, np.newaxis] - centroid_positions, axis=2)
+    return np.argmin(dist_array, axis=1)
+
+def recalculate_centroids(sample_data, cluster_labels, clusters):
+    return np.array([sample_data[cluster_labels == j].mean(axis=0) for j in range(clusters)])
+
+def k_means(sample_data, clusters, iterations=1000):
+    centroids = random_centroids(sample_data, clusters)
+    for i in range(iterations):
+        labels = cluster_assignment(sample_data, centroids)
+        new_centroids = recalculate_centroids(sample_data, labels, clusters)
+        if np.array_equal(centroids, new_centroids):
+            break
+        centroids = new_centroids
+    return labels, centroids
+
+def compute_cost(sample_data, cluster_labels, centroid_positions):
+    total_cost = sum(np.sum((sample_data[cluster_labels == idx] - centroid_positions[idx]) ** 2)
+                     for idx in range(len(centroid_positions)))
+    return total_cost
+
+# Optimal clustering
+best_cost, optimal_labels, optimal_centroids = float('inf'), None, None
+clusters = 4  
+
+for trial in range(100):
+    labels, centroids = k_means(pca_df, clusters)
+    cost = compute_cost(pca_df, labels, centroids)
+    if cost < best_cost:
+        best_cost, optimal_labels, optimal_centroids = cost, labels, centroids
+
+print("Minimized Cost:", best_cost)
+
+# Visualization of the clustering
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+scatter_plot = ax.scatter(pca_df['PC1'], pca_df['PC2'], pca_df['PC3'], c=optimal_labels, cmap='viridis', marker='o')
+ax.scatter(optimal_centroids[:, 0], optimal_centroids[:, 1], optimal_centroids[:, 2], color='red', marker='x', s=100, label='Centroids')
+
+ax.set_title("K-means Clustering with PCA")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+ax.set_zlabel("PC3")
+ax.legend()
+plt.show()
